@@ -1,0 +1,1052 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>色彩卡片產生器</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exif-js/2.3.0/exif.js"></script>
+<style>
+  :root{
+    --paper:#F6F3EC;
+    --paper-2:#EFEAE0;
+    --ink:#241F1B;
+    --ink-soft:#6B6459;
+    --line:#D8D2C4;
+    --accent:#241F1B;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--paper);
+    color:var(--ink);
+    font-family:'Noto Serif TC', serif;
+  }
+  .mono{ font-family:'Space Mono', monospace; letter-spacing:0.02em; }
+
+  .app{
+    display:grid;
+    grid-template-columns: 340px 1fr;
+    min-height:100vh;
+  }
+  @media (max-width: 860px){
+    .app{ grid-template-columns: 1fr; }
+  }
+
+  /* ---------- left panel ---------- */
+  .panel{
+    border-right:1px solid var(--line);
+    padding:32px 28px;
+    position:sticky;
+    top:0;
+    height:100vh;
+    overflow-y:auto;
+  }
+  @media (max-width: 860px){
+    .panel{ position:static; height:auto; border-right:none; border-bottom:1px solid var(--line); }
+  }
+  .title{
+    font-size:22px;
+    font-weight:700;
+    margin:0 0 4px;
+  }
+  .subtitle{
+    font-size:13px;
+    color:var(--ink-soft);
+    margin:0 0 28px;
+    line-height:1.6;
+  }
+  .dropzone{
+    border:1px dashed var(--ink-soft);
+    border-radius:2px;
+    padding:28px 16px;
+    text-align:center;
+    cursor:pointer;
+    transition:border-color .15s ease, background .15s ease;
+  }
+  .dropzone:hover{ border-color:var(--ink); background:var(--paper-2); }
+  .dropzone.drag{ border-color:var(--ink); background:var(--paper-2); }
+  .dropzone p{ margin:0; font-size:13px; color:var(--ink-soft); }
+  .dropzone .cta{ font-size:14px; color:var(--ink); margin-bottom:6px; }
+  input[type=file]{ display:none; }
+
+  .preview-wrap{ margin-top:20px; }
+  .preview-img{
+    width:100%;
+    display:block;
+    border-radius:2px;
+    border:1px solid var(--line);
+  }
+  .change-link{
+    display:inline-block;
+    margin-top:10px;
+    font-size:12px;
+    color:var(--ink-soft);
+    cursor:pointer;
+    text-decoration:underline;
+    text-underline-offset:3px;
+  }
+
+  .palette-label{
+    font-size:12px;
+    color:var(--ink-soft);
+    margin:24px 0 10px;
+  }
+  .palette-row{
+    display:flex;
+    gap:8px;
+  }
+  .swatch{
+    flex:1;
+    aspect-ratio:1;
+    border-radius:2px;
+    border:1px solid rgba(0,0,0,.08);
+    position:relative;
+    cursor:pointer;
+    transition:transform .1s ease;
+  }
+  .swatch:hover{ transform:translateY(-2px); }
+  .swatch.active{
+    outline:2px solid var(--ink);
+    outline-offset:2px;
+  }
+  .swatch .check{
+    position:absolute;
+    top:0; left:0; right:0; bottom:0;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size:13px;
+    opacity:0;
+  }
+  .swatch.active .check{ opacity:1; }
+  .swatch .hex{
+    position:absolute;
+    bottom:-18px;
+    left:0;
+    right:0;
+    text-align:center;
+    font-size:9px;
+    color:var(--ink-soft);
+  }
+  .status{
+    font-size:12px;
+    color:var(--ink-soft);
+    margin-top:14px;
+    min-height:16px;
+  }
+
+  .text-field{
+    width:100%;
+    font-family:'Noto Serif TC', serif;
+    font-size:13px;
+    color:var(--ink);
+    background:#fff;
+    border:1px solid var(--line);
+    border-radius:2px;
+    padding:9px 10px;
+  }
+  .text-field:focus{ outline:none; border-color:var(--ink-soft); }
+  .field-hint{
+    font-size:11px;
+    color:var(--ink-soft);
+    margin:6px 0 0;
+  }
+
+  /* ---------- right gallery ---------- */
+  .gallery{
+    padding:32px;
+  }
+  .gallery-empty{
+    height:70vh;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    color:var(--ink-soft);
+    font-size:14px;
+    text-align:center;
+    line-height:1.8;
+  }
+  .grid{
+    display:grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap:28px;
+  }
+  .card-slot{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+  }
+  .card-slot canvas{
+    width:100%;
+    height:auto;
+    border-radius:2px;
+    box-shadow: 0 1px 2px rgba(0,0,0,.06), 0 8px 20px rgba(0,0,0,.08);
+  }
+  .card-meta{
+    width:100%;
+    display:flex;
+    justify-content:space-between;
+    align-items:baseline;
+    margin-top:12px;
+  }
+  .card-name{ font-size:13px; font-weight:600; }
+  .card-index{ font-size:11px; color:var(--ink-soft); }
+  .download-btn{
+    margin-top:8px;
+    align-self:flex-start;
+    background:none;
+    border:1px solid var(--line);
+    color:var(--ink);
+    font-family:'Space Mono', monospace;
+    font-size:11px;
+    padding:6px 14px;
+    border-radius:2px;
+    cursor:pointer;
+    transition:border-color .15s ease;
+    display:inline-block;
+    text-decoration:none;
+  }
+  .download-btn:hover{ border-color:var(--ink); }
+
+  .debug-line{
+    margin-top:6px;
+    font-size:10px;
+    font-family:'Space Mono', monospace;
+    color:var(--ink-soft);
+    line-height:1.5;
+    word-break:break-all;
+    min-height:14px;
+  }
+  .debug-panel{
+    margin:0 32px 32px;
+    padding:14px 16px;
+    border:1px solid var(--line);
+    background:var(--paper-2);
+    font-family:'Space Mono', monospace;
+    font-size:11px;
+    color:var(--ink-soft);
+    white-space:pre-wrap;
+    word-break:break-all;
+    display:none;
+    max-height:220px;
+    overflow-y:auto;
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <div class="panel">
+    <p class="title">色彩卡片產生器</p>
+    <p class="subtitle">上傳一張照片，自動萃取主要色彩，生成一組風格各異的實體感卡片。</p>
+
+    <div class="dropzone" id="dropzone">
+      <p class="cta">點擊或拖曳照片到這裡</p>
+      <p>支援 JPG／PNG，建議橫向或直向照片皆可</p>
+      <input type="file" id="fileInput" accept="image/*">
+    </div>
+
+    <div class="preview-wrap" id="previewWrap" style="display:none;">
+      <img class="preview-img" id="previewImg" alt="上傳的照片預覽">
+      <span class="change-link" id="changeLink">更換照片</span>
+    </div>
+
+    <div id="paletteSection" style="display:none;">
+      <p class="palette-label">萃取出的主要色彩 · 點選來指定卡片主色</p>
+      <div class="palette-row" id="paletteRow"></div>
+    </div>
+
+    <div id="locationSection" style="display:none;">
+      <p class="palette-label">地標卡文字（會自動即時更新）</p>
+      <input type="text" id="locationInput" class="text-field" placeholder="地點名稱，例如 Piazza Navona · Rome">
+      <p class="field-hint" id="gpsHint"></p>
+    </div>
+
+    <p class="status" id="status"></p>
+    <p class="field-hint" id="envInfo" style="word-break:break-all;"></p>
+  </div>
+
+  <div class="gallery">
+    <div class="gallery-empty" id="galleryEmpty">上傳照片後，這裡會出現<br>拍立得、票根、底片、月曆等卡片</div>
+    <div class="grid" id="grid" style="display:none;"></div>
+  </div>
+</div>
+
+<script>
+const envInfo = document.getElementById('envInfo');
+envInfo.textContent = 'share:' + (!!navigator.share) + ' canShare:' + (!!navigator.canShare) + ' https:' + window.isSecureContext + ' UA:' + navigator.userAgent;
+window.addEventListener('error', e => console.error('JS error: ' + e.message + ' @ line ' + e.lineno));
+window.addEventListener('unhandledrejection', e => console.error('Unhandled rejection: ', e.reason));
+
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+const previewWrap = document.getElementById('previewWrap');
+const previewImg = document.getElementById('previewImg');
+const changeLink = document.getElementById('changeLink');
+const paletteSection = document.getElementById('paletteSection');
+const paletteRow = document.getElementById('paletteRow');
+const statusEl = document.getElementById('status');
+const galleryEmpty = document.getElementById('galleryEmpty');
+const grid = document.getElementById('grid');
+const locationSection = document.getElementById('locationSection');
+const locationInput = document.getElementById('locationInput');
+const gpsHint = document.getElementById('gpsHint');
+
+let currentImage = null;
+let currentPalette = [];
+let selectedColorIndex = 0;
+let shotDate = new Date();
+let gpsCoords = null;
+let locationName = '';
+
+locationInput.addEventListener('input', () => {
+  locationName = locationInput.value;
+  if (currentImage && currentPalette.length) renderAllCards(currentImage, getActivePalette());
+});
+
+dropzone.addEventListener('click', () => fileInput.click());
+changeLink.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', e => {
+  if (e.target.files[0]) handleFile(e.target.files[0]);
+});
+['dragover','dragenter'].forEach(evt => dropzone.addEventListener(evt, e => {
+  e.preventDefault(); dropzone.classList.add('drag');
+}));
+['dragleave','drop'].forEach(evt => dropzone.addEventListener(evt, e => {
+  e.preventDefault(); dropzone.classList.remove('drag');
+}));
+dropzone.addEventListener('drop', e => {
+  if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+});
+
+function handleFile(file) {
+  if (!file.type.startsWith('image/')) return;
+  statusEl.textContent = '讀取照片中…';
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const img = new Image();
+    img.onload = () => {
+      currentImage = img;
+      previewImg.src = ev.target.result;
+      previewWrap.style.display = 'block';
+      shotDate = new Date();
+      gpsCoords = null;
+      locationName = '';
+      selectedColorIndex = 0;
+      locationInput.value = '';
+      gpsHint.textContent = '';
+      readExif(img);
+      statusEl.textContent = '萃取色彩中…';
+      setTimeout(() => {
+        currentPalette = extractPalette(img, 6);
+        renderPalette(currentPalette);
+        locationSection.style.display = 'block';
+        statusEl.textContent = '生成卡片中…';
+        setTimeout(() => {
+          renderAllCards(img, getActivePalette());
+          statusEl.textContent = '完成，共 ' + CARD_DEFS.length + ' 種卡片';
+        }, 30);
+      }, 30);
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+/* ---------------- exif ---------------- */
+function toDecimal(dms, ref) {
+  if (!dms || dms.length < 3) return null;
+  let val = dms[0] + dms[1] / 60 + dms[2] / 3600;
+  if (ref === 'S' || ref === 'W') val = -val;
+  return val;
+}
+
+function readExif(img) {
+  if (typeof EXIF === 'undefined') return;
+  try {
+    EXIF.getData(img, function () {
+      const lat = EXIF.getTag(this, 'GPSLatitude');
+      const latRef = EXIF.getTag(this, 'GPSLatitudeRef');
+      const lon = EXIF.getTag(this, 'GPSLongitude');
+      const lonRef = EXIF.getTag(this, 'GPSLongitudeRef');
+      const dto = EXIF.getTag(this, 'DateTimeOriginal');
+
+      if (lat && lon) {
+        const latD = toDecimal(lat, latRef);
+        const lonD = toDecimal(lon, lonRef);
+        if (latD !== null && lonD !== null) {
+          gpsCoords = { lat: latD, lon: lonD };
+          gpsHint.textContent = '已從照片讀到 GPS 座標';
+        }
+      } else {
+        gpsHint.textContent = '這張照片沒有 GPS 資訊，座標欄位會留白';
+      }
+      if (dto) {
+        const parts = dto.split(' ');
+        const d = parts[0].split(':');
+        const t = (parts[1] || '00:00:00').split(':');
+        shotDate = new Date(+d[0], +d[1] - 1, +d[2], +t[0], +t[1], +t[2]);
+      }
+      if (currentImage && currentPalette.length) renderAllCards(currentImage, getActivePalette());
+    });
+  } catch (e) { /* no exif, keep defaults */ }
+}
+
+function formatCoords(c) {
+  if (!c) return '';
+  const ns = c.lat >= 0 ? 'N' : 'S';
+  const ew = c.lon >= 0 ? 'E' : 'W';
+  return `${Math.abs(c.lat).toFixed(4)}°${ns}  ${Math.abs(c.lon).toFixed(4)}°${ew}`;
+}
+
+function formatDateTime(d) {
+  const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+  const date = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return `${time} · ${date}`;
+}
+
+/* ---------------- color extraction ---------------- */
+function extractPalette(img, count) {
+  const sampleCanvas = document.createElement('canvas');
+  const size = 120;
+  sampleCanvas.width = size;
+  sampleCanvas.height = size;
+  const sctx = sampleCanvas.getContext('2d');
+  sctx.drawImage(img, 0, 0, size, size);
+  const data = sctx.getImageData(0, 0, size, size).data;
+
+  const buckets = new Map();
+  const step = 24;
+  for (let i = 0; i < data.length; i += 4) {
+    const a = data[i + 3];
+    if (a < 128) continue;
+    const r = data[i], g = data[i + 1], b = data[i + 2];
+    const key = [Math.round(r / step), Math.round(g / step), Math.round(b / step)].join(',');
+    if (!buckets.has(key)) buckets.set(key, { r: 0, g: 0, b: 0, n: 0 });
+    const bucket = buckets.get(key);
+    bucket.r += r; bucket.g += g; bucket.b += b; bucket.n += 1;
+  }
+
+  let entries = Array.from(buckets.values()).map(b => ({
+    r: b.r / b.n, g: b.g / b.n, b: b.b / b.n, n: b.n
+  }));
+  entries.sort((a, b) => b.n - a.n);
+
+  const clusters = [];
+  const dist = (a, c) => Math.hypot(a.r - c.r, a.g - c.g, a.b - c.b);
+  for (const e of entries) {
+    let merged = false;
+    for (const c of clusters) {
+      if (dist(e, c) < 40) {
+        const total = c.n + e.n;
+        c.r = (c.r * c.n + e.r * e.n) / total;
+        c.g = (c.g * c.n + e.g * e.n) / total;
+        c.b = (c.b * c.n + e.b * e.n) / total;
+        c.n = total;
+        merged = true;
+        break;
+      }
+    }
+    if (!merged) clusters.push({ ...e });
+    if (clusters.length >= count * 3) break;
+  }
+  clusters.sort((a, b) => b.n - a.n);
+  return clusters.slice(0, count).map(c => ({
+    r: Math.round(c.r), g: Math.round(c.g), b: Math.round(c.b)
+  }));
+}
+
+function toHex(c) {
+  const h = n => n.toString(16).padStart(2, '0');
+  return '#' + h(c.r) + h(c.g) + h(c.b);
+}
+function luminance(c) {
+  return 0.299 * c.r + 0.587 * c.g + 0.114 * c.b;
+}
+function textOn(c) {
+  return luminance(c) > 150 ? '#241F1B' : '#F6F3EC';
+}
+function mixWhite(c, amt) {
+  return { r: c.r + (255 - c.r) * amt, g: c.g + (255 - c.g) * amt, b: c.b + (255 - c.b) * amt };
+}
+function mixBlack(c, amt) {
+  return { r: c.r * (1 - amt), g: c.g * (1 - amt), b: c.b * (1 - amt) };
+}
+function rgbStr(c) { return `rgb(${c.r|0},${c.g|0},${c.b|0})`; }
+
+function renderPalette(palette) {
+  paletteSection.style.display = 'block';
+  paletteRow.innerHTML = '';
+  palette.forEach((c, i) => {
+    const sw = document.createElement('div');
+    sw.className = 'swatch' + (i === selectedColorIndex ? ' active' : '');
+    sw.style.background = rgbStr(c);
+    sw.title = toHex(c);
+    const check = document.createElement('span');
+    check.className = 'check';
+    check.textContent = '✓';
+    check.style.color = textOn(c);
+    sw.appendChild(check);
+    const hexLabel = document.createElement('span');
+    hexLabel.className = 'hex mono';
+    hexLabel.textContent = toHex(c);
+    sw.appendChild(hexLabel);
+    sw.addEventListener('click', () => {
+      selectedColorIndex = i;
+      renderPalette(currentPalette);
+      if (currentImage) renderAllCards(currentImage, getActivePalette());
+    });
+    paletteRow.appendChild(sw);
+  });
+}
+
+function getActivePalette() {
+  if (!currentPalette.length) return currentPalette;
+  const rest = currentPalette.filter((_, i) => i !== selectedColorIndex);
+  return [currentPalette[selectedColorIndex], ...rest];
+}
+
+/* ---------------- image draw helper (cover fit) ---------------- */
+function drawCover(ctx, img, x, y, w, h) {
+  const ir = img.width / img.height;
+  const tr = w / h;
+  let sx, sy, sw, sh;
+  if (ir > tr) {
+    sh = img.height;
+    sw = sh * tr;
+    sx = (img.width - sw) / 2;
+    sy = 0;
+  } else {
+    sw = img.width;
+    sh = sw / tr;
+    sx = 0;
+    sy = (img.height - sh) / 2;
+  }
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x, y, w, h);
+  ctx.clip();
+  ctx.drawImage(img, sx, sy, sw, sh, x, y, w, h);
+  ctx.restore();
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+function drawBarcode(ctx, x, y, w, h, seed) {
+  let bx = x;
+  let i = 0;
+  while (bx < x + w) {
+    const bw = 1.5 + ((seed.r + seed.g * i + seed.b) % 4);
+    if (i % 5 !== 4) {
+      ctx.fillRect(bx, y, bw, h);
+    }
+    bx += bw + 2;
+    i++;
+  }
+}
+
+/* ---------------- card templates ---------------- */
+/* each fn(ctx, W, H, img, palette) draws a full card */
+
+function cardPolaroid(ctx, W, H, img, p) {
+  const c0 = p[0], c1 = p[1] || p[0];
+  ctx.fillStyle = '#FBFAF6';
+  ctx.fillRect(0, 0, W, H);
+  const m = W * 0.06;
+  const photoH = H * 0.68;
+  drawCover(ctx, img, m, m, W - m * 2, photoH);
+  ctx.strokeStyle = 'rgba(0,0,0,0.06)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(m, m, W - m * 2, photoH);
+  ctx.fillStyle = rgbStr(c0);
+  ctx.beginPath();
+  ctx.arc(W - m - 14, m + photoH - 14, 9, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#241F1B';
+  ctx.font = `${W * 0.052}px 'Space Mono', monospace`;
+  ctx.fillText(new Date().toISOString().slice(0, 10).replace(/-/g, '.'), m + 2, H - m * 1.6);
+  ctx.fillStyle = rgbStr(c1);
+  ctx.fillRect(m, H - m * 0.95, W - m * 2, 4);
+}
+
+function cardTicket(ctx, W, H, img, p) {
+  const c0 = p[0], c1 = p[1] || p[0], c2 = p[2] || p[0];
+  const bg = mixWhite(c0, 0.85);
+  ctx.fillStyle = rgbStr(bg);
+  ctx.fillRect(0, 0, W, H);
+
+  const photoH = H * 0.42;
+  drawCover(ctx, img, 0, 0, W, photoH);
+
+  ctx.fillStyle = rgbStr(c0);
+  ctx.fillRect(0, photoH, W, 6);
+
+  const perfY = photoH + 6;
+  ctx.fillStyle = rgbStr(bg);
+  for (let x = -10; x < W + 10; x += 24) {
+    ctx.beginPath();
+    ctx.arc(x, perfY, 7, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  const pad = W * 0.08;
+  ctx.fillStyle = '#241F1B';
+  ctx.font = `700 ${W * 0.07}px 'Noto Serif TC'`;
+  ctx.fillText('旅 行 票 根', pad, photoH + 46);
+
+  ctx.font = `${W * 0.032}px 'Space Mono', monospace`;
+  ctx.fillStyle = '#6B6459';
+  const rows = [
+    ['FROM', 'TPE'], ['TO', '——'],
+    ['DATE', new Date().toISOString().slice(0, 10)],
+    ['SEAT', String(12 + (p[0].r % 20)).padStart(2, '0') + 'A']
+  ];
+  let ry = photoH + 78;
+  rows.forEach(([k, v]) => {
+    ctx.fillStyle = '#6B6459';
+    ctx.fillText(k, pad, ry);
+    ctx.fillStyle = '#241F1B';
+    ctx.fillText(v, pad + W * 0.22, ry);
+    ry += H * 0.065;
+  });
+
+  ctx.strokeStyle = rgbStr(c1);
+  ctx.lineWidth = 2;
+  ctx.setLineDash([4, 4]);
+  ctx.beginPath();
+  ctx.moveTo(pad, H - H * 0.12);
+  ctx.lineTo(W - pad, H - H * 0.12);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.font = `${W * 0.03}px 'Space Mono', monospace`;
+  ctx.fillStyle = rgbStr(c2);
+  ctx.fillText('NO. ' + toHex(p[0]).slice(1).toUpperCase(), pad, H - H * 0.05);
+}
+
+function cardFilm(ctx, W, H, img, p) {
+  ctx.fillStyle = '#161412';
+  ctx.fillRect(0, 0, W, H);
+  const holeR = W * 0.018;
+  const holeGap = H * 0.09;
+  for (let side = 0; side < 2; side++) {
+    const hx = side === 0 ? W * 0.05 : W * 0.95;
+    for (let y = holeGap / 2; y < H; y += holeGap) {
+      ctx.fillStyle = '#0B0A09';
+      roundRect(ctx, hx - holeR, y - holeR, holeR * 2, holeR * 2, 2);
+      ctx.fill();
+    }
+  }
+  const fx = W * 0.11, fw = W * 0.78;
+  const frameH = (H - H * 0.06) / 3;
+  for (let i = 0; i < 3; i++) {
+    const fy = H * 0.03 + i * frameH;
+    drawCover(ctx, img, fx, fy + 4, fw, frameH - 8);
+    const tint = p[i % p.length];
+    ctx.fillStyle = `rgba(${tint.r},${tint.g},${tint.b},0.22)`;
+    ctx.fillRect(fx, fy + 4, fw, frameH - 8);
+  }
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  ctx.font = `${W * 0.026}px 'Space Mono', monospace`;
+  ctx.save();
+  ctx.translate(W * 0.5, H * 0.985);
+  ctx.textAlign = 'center';
+  ctx.fillText(p.map(c => toHex(c)).join('  ').toUpperCase(), 0, 0);
+  ctx.restore();
+}
+
+function cardCalendar(ctx, W, H, img, p) {
+  const c0 = p[0], c1 = p[1] || p[0];
+  ctx.fillStyle = '#FBFAF6';
+  ctx.fillRect(0, 0, W, H);
+
+  const headH = H * 0.3;
+  drawCover(ctx, img, 0, 0, W, headH);
+  ctx.fillStyle = `rgba(${c0.r},${c0.g},${c0.b},0.28)`;
+  ctx.fillRect(0, 0, W, headH);
+
+  const today = new Date();
+  ctx.fillStyle = '#fff';
+  ctx.font = `700 ${W * 0.09}px 'Space Mono', monospace`;
+  ctx.fillText(String(today.getDate()).padStart(2, '0'), W * 0.06, headH - 18);
+  ctx.font = `${W * 0.035}px 'Noto Serif TC'`;
+  ctx.fillText(['一月','二月','三月','四月','五月','六月','七月','八月','九月','十月','十一月','十二月'][today.getMonth()], W * 0.06, headH - 46);
+
+  const days = ['日','一','二','三','四','五','六'];
+  const gridTop = headH + H * 0.08;
+  const cell = (W - W * 0.12) / 7;
+  ctx.font = `${W * 0.028}px 'Space Mono', monospace`;
+  ctx.fillStyle = '#6B6459';
+  days.forEach((d, i) => {
+    ctx.textAlign = 'center';
+    ctx.fillText(d, W * 0.06 + cell * i + cell / 2, gridTop);
+  });
+
+  const firstDay = new Date(today.getFullYear(), today.getMonth(), 1).getDay();
+  const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+  let row = 0, col = firstDay;
+  for (let d = 1; d <= daysInMonth; d++) {
+    const cx = W * 0.06 + cell * col + cell / 2;
+    const cy = gridTop + H * 0.075 * (row + 1);
+    if (d === today.getDate()) {
+      ctx.fillStyle = rgbStr(c1);
+      ctx.beginPath();
+      ctx.arc(cx, cy - 6, cell * 0.34, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = textOn(c1);
+    } else {
+      ctx.fillStyle = '#241F1B';
+    }
+    ctx.font = `${W * 0.026}px 'Space Mono', monospace`;
+    ctx.textAlign = 'center';
+    ctx.fillText(String(d), cx, cy - 1);
+    col++;
+    if (col > 6) { col = 0; row++; }
+  }
+  ctx.textAlign = 'left';
+}
+
+function cardPostcard(ctx, W, H, img, p) {
+  const c0 = p[0], c1 = p[1] || p[0];
+  ctx.fillStyle = '#F6F1E6';
+  ctx.fillRect(0, 0, W, H);
+  const half = W * 0.52;
+  drawCover(ctx, img, 0, 0, half, H);
+
+  ctx.strokeStyle = rgbStr(mixWhite(c0, 0.4));
+  ctx.lineWidth = 1;
+  for (let i = 0; i < 4; i++) {
+    const ly = H * 0.28 + i * H * 0.13;
+    ctx.beginPath();
+    ctx.moveTo(half + W * 0.06, ly);
+    ctx.lineTo(W - W * 0.06, ly);
+    ctx.stroke();
+  }
+
+  const stampW = W * 0.22, stampH = stampW * 1.2;
+  const sx = W - W * 0.08 - stampW, sy = H * 0.06;
+  ctx.fillStyle = rgbStr(mixWhite(c0, 0.75));
+  ctx.setLineDash([4, 3]);
+  ctx.strokeStyle = rgbStr(c0);
+  ctx.lineWidth = 2;
+  roundRect(ctx, sx, sy, stampW, stampH, 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = rgbStr(c0);
+  ctx.font = `${W * 0.03}px 'Space Mono', monospace`;
+  ctx.textAlign = 'center';
+  ctx.fillText(toHex(c0).toUpperCase(), sx + stampW / 2, sy + stampH / 2 + 4);
+  ctx.textAlign = 'left';
+
+  ctx.strokeStyle = rgbStr(c1);
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.arc(sx - stampW * 0.3, sy + stampH + 26, 20, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.font = `${W * 0.018}px 'Space Mono', monospace`;
+  ctx.fillStyle = rgbStr(c1);
+  ctx.textAlign = 'center';
+  ctx.fillText('TAIPEI', sx - stampW * 0.3, sy + stampH + 22);
+  ctx.fillText(new Date().toISOString().slice(0, 10), sx - stampW * 0.3, sy + stampH + 34);
+  ctx.textAlign = 'left';
+
+  ctx.font = `${W * 0.045}px 'Noto Serif TC'`;
+  ctx.fillStyle = '#241F1B';
+  ctx.fillText('Greetings', half + W * 0.06, H * 0.2);
+}
+
+function cardBoardingPass(ctx, W, H, img, p) {
+  const c0 = p[0], c1 = p[1] || p[0];
+  ctx.fillStyle = '#FBFAF6';
+  ctx.fillRect(0, 0, W, H);
+
+  const stubW = W * 0.28;
+  ctx.fillStyle = rgbStr(mixWhite(c0, 0.82));
+  ctx.fillRect(W - stubW, 0, stubW, H);
+
+  drawCover(ctx, img, 0, 0, W - stubW, H * 0.34);
+  ctx.fillStyle = `rgba(${c0.r},${c0.g},${c0.b},0.25)`;
+  ctx.fillRect(0, 0, W - stubW, H * 0.34);
+
+  const pad = W * 0.05;
+  ctx.fillStyle = '#241F1B';
+  ctx.font = `700 ${W * 0.06}px 'Noto Serif TC'`;
+  ctx.fillText('登 機 證', pad, H * 0.34 + 40);
+  ctx.font = `${W * 0.03}px 'Space Mono', monospace`;
+  ctx.fillStyle = rgbStr(c1);
+  ctx.fillText('BOARDING PASS', pad, H * 0.34 + 62);
+
+  const info = [['GATE', String(1 + (p[0].g % 30))], ['SEAT', (10 + p[0].b % 20) + 'C'], ['TIME', '14:' + String(p[0].r % 60).padStart(2, '0')]];
+  let iy = H * 0.34 + 100;
+  info.forEach(([k, v]) => {
+    ctx.font = `${W * 0.024}px 'Space Mono', monospace`;
+    ctx.fillStyle = '#6B6459';
+    ctx.fillText(k, pad, iy);
+    ctx.font = `700 ${W * 0.038}px 'Space Mono', monospace`;
+    ctx.fillStyle = '#241F1B';
+    ctx.fillText(v, pad, iy + 26);
+    iy += H * 0.13;
+  });
+
+  ctx.strokeStyle = rgbStr(mixWhite(c0, 0.3));
+  ctx.setLineDash([5, 5]);
+  ctx.beginPath();
+  ctx.moveTo(W - stubW, 0);
+  ctx.lineTo(W - stubW, H);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.save();
+  ctx.translate(W - stubW / 2, H * 0.5);
+  ctx.rotate(Math.PI / 2);
+  ctx.textAlign = 'center';
+  ctx.font = `${W * 0.032}px 'Space Mono', monospace`;
+  ctx.fillStyle = rgbStr(c0);
+  ctx.fillText(toHex(c0).toUpperCase() + '   ' + toHex(c1).toUpperCase(), 0, 0);
+  ctx.restore();
+
+  let bx = W - stubW + pad;
+  const barTop = H * 0.72;
+  for (let i = 0; i < 14; i++) {
+    const bw = 2 + (p[0].r + i * 13) % 5;
+    ctx.fillStyle = i % 3 === 0 ? rgbStr(c0) : '#241F1B';
+    ctx.fillRect(bx, barTop, bw, H * 0.16);
+    bx += bw + 3;
+  }
+}
+
+function cardStamp(ctx, W, H, img, p) {
+  const c0 = p[0];
+  ctx.fillStyle = rgbStr(mixWhite(c0, 0.88));
+  ctx.fillRect(0, 0, W, H);
+
+  const m = W * 0.1;
+  ctx.strokeStyle = rgbStr(c0);
+  ctx.lineWidth = 2;
+  ctx.setLineDash([1, 7]);
+  ctx.lineCap = 'round';
+  roundRect(ctx, m * 0.5, m * 0.5, W - m, H - m, 0);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.lineCap = 'butt';
+
+  drawCover(ctx, img, m, m, W - m * 2, H - m * 2.6);
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 6;
+  ctx.strokeRect(m, m, W - m * 2, H - m * 2.6);
+
+  ctx.fillStyle = rgbStr(c0);
+  ctx.font = `700 ${W * 0.11}px 'Space Mono', monospace`;
+  ctx.fillText((10 + p[0].r % 90).toString(), m, H - m * 0.9);
+  ctx.font = `${W * 0.035}px 'Noto Serif TC'`;
+  ctx.fillText('分', m + W * 0.22, H - m * 0.9);
+}
+
+function cardIndex(ctx, W, H, img, p) {
+  ctx.fillStyle = '#FBFAF6';
+  ctx.fillRect(0, 0, W, H);
+  const m = W * 0.08;
+  const photoH = H * 0.42;
+  drawCover(ctx, img, m, m, W - m * 2, photoH);
+
+  ctx.font = `700 ${W * 0.045}px 'Noto Serif TC'`;
+  ctx.fillStyle = '#241F1B';
+  ctx.fillText('COLOR PALETTE', m, photoH + m + 24);
+
+  const rowH = (H - photoH - m * 2.6) / p.length;
+  p.forEach((c, i) => {
+    const y = photoH + m * 1.6 + rowH * i + 30;
+    ctx.fillStyle = rgbStr(c);
+    ctx.fillRect(m, y, rowH * 0.6, rowH * 0.6);
+    ctx.strokeStyle = 'rgba(0,0,0,0.08)';
+    ctx.strokeRect(m, y, rowH * 0.6, rowH * 0.6);
+    ctx.font = `${W * 0.032}px 'Space Mono', monospace`;
+    ctx.fillStyle = '#241F1B';
+    ctx.fillText(toHex(c).toUpperCase(), m + rowH * 0.6 + 14, y + rowH * 0.4);
+    ctx.font = `${W * 0.022}px 'Space Mono', monospace`;
+    ctx.fillStyle = '#6B6459';
+    ctx.fillText(`R${c.r} G${c.g} B${c.b}`, m + rowH * 0.6 + 14, y + rowH * 0.6);
+  });
+}
+
+function cardLocationStub(ctx, W, H, img, p) {
+  const bg = p[0];
+  const cream = { r: 245, g: 240, b: 231 };
+  const ink = { r: 36, g: 31, b: 27 };
+
+  ctx.fillStyle = rgbStr(bg);
+  ctx.fillRect(0, 0, W, H);
+
+  const cardX = W * 0.055, cardY = W * 0.055;
+  const cardW = W - cardX * 2, cardH = H - cardY * 2;
+  const radius = W * 0.07;
+  const photoH = cardH * 0.62;
+
+  ctx.save();
+  roundRect(ctx, cardX, cardY, cardW, cardH, radius);
+  ctx.clip();
+  ctx.fillStyle = rgbStr(cream);
+  ctx.fillRect(cardX, cardY, cardW, cardH);
+  drawCover(ctx, img, cardX, cardY, cardW, photoH);
+  ctx.restore();
+
+  const notchY = cardY + photoH;
+  const notchR = W * 0.032;
+  ctx.fillStyle = rgbStr(bg);
+  ctx.beginPath(); ctx.arc(cardX, notchY, notchR, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(cardX + cardW, notchY, notchR, 0, Math.PI * 2); ctx.fill();
+
+  ctx.strokeStyle = rgbStr(bg);
+  ctx.lineWidth = 3;
+  ctx.setLineDash([7, 6]);
+  ctx.beginPath();
+  ctx.moveTo(cardX + notchR, notchY);
+  ctx.lineTo(cardX + cardW - notchR, notchY);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  const pad = cardX + cardW * 0.07;
+  let ty = notchY + cardH * 0.13;
+
+  ctx.fillStyle = rgbStr(ink);
+  ctx.font = `700 ${W * 0.058}px 'Noto Serif TC'`;
+  const place = (locationName && locationName.trim()) ? locationName.trim() : '在路上的某個角落';
+  ctx.fillText(place, pad, ty);
+
+  ty += cardH * 0.075;
+  ctx.font = `${W * 0.032}px 'Space Mono', monospace`;
+  ctx.fillStyle = rgbStr(mixWhite(ink, 0.25));
+  ctx.fillText(formatDateTime(shotDate), pad, ty);
+
+  if (gpsCoords) {
+    ty += cardH * 0.16;
+    ctx.font = `700 ${W * 0.032}px 'Space Mono', monospace`;
+    ctx.fillStyle = rgbStr(ink);
+    ctx.fillText(formatCoords(gpsCoords), pad, ty);
+  }
+
+  const barY = cardY + cardH - cardH * 0.09;
+  ctx.fillStyle = rgbStr(ink);
+  drawBarcode(ctx, pad, barY - 22, cardW * 0.6, 20, bg);
+
+  ctx.font = `${W * 0.024}px 'Space Mono', monospace`;
+  ctx.fillStyle = rgbStr(mixWhite(ink, 0.5));
+  ctx.fillText('made with colorcards', pad, cardY + cardH - cardH * 0.02);
+}
+
+const CARD_DEFS = [
+  { name: '旅拍地標卡', w: 340, h: 470, draw: cardLocationStub },
+  { name: '拍立得', w: 320, h: 400, draw: cardPolaroid },
+  { name: '旅行票根', w: 320, h: 480, draw: cardTicket },
+  { name: '底片', w: 320, h: 480, draw: cardFilm },
+  { name: '月曆', w: 320, h: 400, draw: cardCalendar },
+  { name: '明信片', w: 400, h: 260, draw: cardPostcard },
+  { name: '登機證', w: 420, h: 220, draw: cardBoardingPass },
+  { name: '郵票', w: 300, h: 360, draw: cardStamp },
+  { name: '色卡索引', w: 300, h: 420, draw: cardIndex }
+];
+
+function renderAllCards(img, palette) {
+  galleryEmpty.style.display = 'none';
+  grid.style.display = 'grid';
+  grid.innerHTML = '';
+
+  CARD_DEFS.forEach((def, idx) => {
+    const slot = document.createElement('div');
+    slot.className = 'card-slot';
+
+    const canvas = document.createElement('canvas');
+    const scale = 2;
+    canvas.width = def.w * scale;
+    canvas.height = def.h * scale;
+    const ctx = canvas.getContext('2d');
+    ctx.scale(scale, scale);
+    def.draw(ctx, def.w, def.h, img, palette);
+    const dataUrl = canvas.toDataURL('image/png');
+
+    const resultImg = document.createElement('img');
+    resultImg.src = dataUrl;
+    resultImg.alt = def.name;
+    resultImg.style.width = '100%';
+    resultImg.style.height = 'auto';
+    resultImg.style.display = 'block';
+    resultImg.style.borderRadius = '2px';
+    resultImg.style.boxShadow = '0 1px 2px rgba(0,0,0,.06), 0 8px 20px rgba(0,0,0,.08)';
+
+    const meta = document.createElement('div');
+    meta.className = 'card-meta';
+    const name = document.createElement('span');
+    name.className = 'card-name';
+    name.textContent = def.name;
+    const index = document.createElement('span');
+    index.className = 'card-index mono';
+    index.textContent = String(idx + 1).padStart(2, '0') + ' / ' + String(CARD_DEFS.length).padStart(2, '0');
+    meta.appendChild(name);
+    meta.appendChild(index);
+
+    const link = document.createElement('a');
+    link.className = 'download-btn';
+    link.textContent = 'download';
+    link.href = dataUrl;
+    link.download = def.name + '.png';
+
+    const hint = document.createElement('p');
+    hint.className = 'field-hint';
+    hint.textContent = '手機點下載會嘗試直接存到相簿';
+
+    link.addEventListener('click', e => {
+      if (navigator.share && navigator.canShare) {
+        try {
+          const blob = dataURLtoBlob(dataUrl);
+          const file = new File([blob], def.name + '.png', { type: 'image/png' });
+          if (navigator.canShare({ files: [file] })) {
+            e.preventDefault();
+            hint.textContent = '開啟分享面板…選「儲存影像」存到相簿';
+            navigator.share({ files: [file], title: def.name + '.png' })
+              .catch(() => { hint.textContent = '已取消或分享失敗，可改用長按圖片存檔'; });
+            return;
+          }
+        } catch (err) {
+          /* fall through to the native <a download> below */
+        }
+      }
+      hint.textContent = '下載中…';
+    });
+
+    slot.appendChild(resultImg);
+    slot.appendChild(meta);
+    slot.appendChild(link);
+    slot.appendChild(hint);
+    grid.appendChild(slot);
+  });
+}
+
+function dataURLtoBlob(dataUrl) {
+  const arr = dataUrl.split(',');
+  const mime = arr[0].match(/:(.*?);/)[1];
+  const bstr = atob(arr[1]);
+  let n = bstr.length;
+  const u8arr = new Uint8Array(n);
+  while (n--) u8arr[n] = bstr.charCodeAt(n);
+  return new Blob([u8arr], { type: mime });
+}
+
+
+
+
+
+</script>
+</body>
+</html>
