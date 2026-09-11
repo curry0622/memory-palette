@@ -421,8 +421,21 @@ function readExif(img) {
   } catch (e) { /* no exif, keep defaults */ }
 }
 function locationCardIndex() { return CARD_DEFS.findIndex(d => d.name === '旅拍地標卡'); }
+function syncLocationDependentFields() {
+  CARD_DEFS.forEach((def, idx) => {
+    (def.fields || []).forEach(fd => {
+      if (!fd.usesPlace) return;
+      if (fieldTouched.has(idx + ':' + fd.key)) return;
+      const val = fd.default(currentImage, getActivePalette());
+      fieldState[idx] = fieldState[idx] || {};
+      fieldState[idx][fd.key] = val;
+      if (cardInputs[idx] && cardInputs[idx][fd.key]) cardInputs[idx][fd.key].value = val;
+      if (cardImgEls[idx]) refreshCardImage(idx);
+    });
+  });
+}
 function reverseGeocode(lat, lon) {
-  const url = `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=zh`;
+  const url = `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=en`;
   fetch(url).then(r => r.json()).then(data => {
     const name = data.city || data.locality || data.principalSubdivision || '';
     const country = data.countryName || '';
@@ -430,14 +443,7 @@ function reverseGeocode(lat, lon) {
     if (!label) { gpsHint.textContent = '有 GPS 座標，但查不到地名'; return; }
     resolvedPlaceName = label;
     gpsHint.textContent = '地點：' + label;
-    const idx = locationCardIndex();
-    if (idx === -1) return;
-    if (!fieldTouched.has(idx + ':place')) {
-      fieldState[idx] = fieldState[idx] || {};
-      fieldState[idx].place = label;
-      if (cardInputs[idx] && cardInputs[idx].place) cardInputs[idx].place.value = label;
-      if (cardImgEls[idx]) refreshCardImage(idx);
-    }
+    syncLocationDependentFields();
   }).catch(() => { gpsHint.textContent = '地點查詢失敗（可能沒有網路）'; });
 }
 function formatCoords(c) {
@@ -709,7 +715,7 @@ function cardLocationStub(ctx, W, H, img, p, f) {
 
   ctx.fillStyle = rgbStr(ink);
   ctx.font = `700 ${W * 0.058 * fontScale}px ${serifFont}`;
-  const place = (f.place && f.place.trim()) ? f.place.trim() : '在路上的某個角落';
+  const place = (f.place && f.place.trim()) ? f.place.trim() : 'Somewhere out there';
   ctx.fillText(place, pad, ty);
 
   ty += cardH * 0.075;
@@ -934,23 +940,24 @@ function cardBoardingPass(ctx, W, H, img, p, f) {
   ctx.fillRect(0, 0, W - stubW, H * 0.34);
 
   const pad = W * 0.05;
+  const contentTop = H * 0.34;
   ctx.fillStyle = '#241F1B';
   ctx.font = `700 ${W * 0.06 * fontScale}px ${serifFont}`;
-  ctx.fillText('登 機 證', pad, H * 0.34 + 40);
+  ctx.fillText('登 機 證', pad, contentTop + H * 0.12);
   ctx.font = `${W * 0.03 * fontScale}px ${monoFont}`;
   ctx.fillStyle = rgbStr(c1);
-  ctx.fillText('BOARDING PASS', pad, H * 0.34 + 62);
+  ctx.fillText('BOARDING PASS', pad, contentTop + H * 0.205);
 
   const info = [['GATE', f.gate], ['SEAT', f.seat], ['TIME', f.time]];
-  let iy = H * 0.34 + 100;
+  let iy = contentTop + H * 0.28;
   info.forEach(([k, v]) => {
-    ctx.font = `${W * 0.024 * fontScale}px ${monoFont}`;
+    ctx.font = `${W * 0.022 * fontScale}px ${monoFont}`;
     ctx.fillStyle = '#6B6459';
     ctx.fillText(k, pad, iy);
-    ctx.font = `700 ${W * 0.038 * fontScale}px ${monoFont}`;
+    ctx.font = `700 ${W * 0.032 * fontScale}px ${monoFont}`;
     ctx.fillStyle = '#241F1B';
-    ctx.fillText(v, pad, iy + 26);
-    iy += H * 0.13;
+    ctx.fillText(v, pad, iy + H * 0.055);
+    iy += H * 0.12;
   });
 
   ctx.strokeStyle = rgbStr(mixWhite(c0, 0.3));
@@ -981,16 +988,16 @@ function cardBoardingPass(ctx, W, H, img, p, f) {
 const CARD_DEFS = [
   { name: '色塊日期卡', w: 340, h: 460, draw: cardColorDate,
     fields: [
-      { key: 'title', label: '標題文字', default: () => resolvedPlaceName || '此刻，某處' },
+      { key: 'title', label: '標題文字', usesPlace: true, default: () => resolvedPlaceName || 'Somewhere' },
       { key: 'time', label: '時間', default: () => shotDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) }
     ] },
   { name: '音樂播放卡', w: 320, h: 560, draw: cardMusicPlayer,
     fields: [
-      { key: 'title', label: '標題文字', default: () => resolvedPlaceName || 'Memories' },
-      { key: 'subtitle', label: '副標文字', default: () => 'Memory Palette' }
+      { key: 'title', label: '標題文字', default: () => 'Somewhere' },
+      { key: 'subtitle', label: '副標文字', usesPlace: true, default: () => resolvedPlaceName || 'Memory Palette' }
     ] },
   { name: '旅拍地標卡', w: 340, h: 470, draw: cardLocationStub,
-    fields: [{ key: 'place', label: '地點名稱', default: () => resolvedPlaceName || '在路上的某個角落' }] },
+    fields: [{ key: 'place', label: '地點名稱', usesPlace: true, default: () => resolvedPlaceName || 'Somewhere out there' }] },
   { name: '拍立得', w: 320, h: 400, draw: cardPolaroid,
     fields: [{ key: 'caption', label: '日期／說明文字', default: () => shotDate.toISOString().slice(0, 10).replace(/-/g, '.') }] },
   { name: '旅行票根', w: 320, h: 480, draw: cardTicket,
