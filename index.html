@@ -235,7 +235,7 @@
 
     <p class="section-label">卡片字體設定 · 套用到全部卡片文字</p>
     <select id="fontStyleSelect" class="field-input" style="width:100%;">
-      <option value="serif">襯線體（預設）</option>
+      <option value="serif">襯線體</option>
       <option value="sans">黑體</option>
       <option value="mingKai">楷體</option>
       <option value="mingYuan">圓體</option>
@@ -243,13 +243,19 @@
       <option value="mingHei">現代黑體</option>
       <option value="mingMing">明體</option>
       <option value="script">手寫體</option>
-      <option value="brush">行草體</option>
+      <option value="brush" selected>行草體（預設）</option>
       <option value="calligraphy">書法體</option>
     </select>
     <div class="zoom-row">
       <span class="mono" style="font-size:11px; color:var(--ink-soft);">字體大小</span>
       <input type="range" id="fontScaleSlider" min="0.8" max="1.3" step="0.05" value="1">
     </div>
+
+    <p class="section-label">分享格式</p>
+    <label style="display:flex; align-items:center; gap:8px; font-size:12px; color:var(--ink); cursor:pointer;">
+      <input type="checkbox" id="extendVerticalCheckbox">
+      延伸為限時動態比例（9:16），以主題色補滿
+    </label>
   </div>
 
   <div class="gallery">
@@ -259,6 +265,13 @@
 </div>
 
 <script>
+if (document.fonts && document.fonts.load) {
+  ["'Noto Serif TC'", "'Noto Sans TC'", "'cwTeX Q Kai'", "'cwTeX Q Yuan'", "'cwTeX Q Fangsong'", "'cwTeX Q Hei'", "'cwTeX Q Ming'", "'Zhi Mang Xing'", "'Long Cang'", "'Ma Shan Zheng'"].forEach(f => {
+    document.fonts.load(`16px ${f}`, '測試字體Aa123').catch(() => {});
+    document.fonts.load(`700 16px ${f}`, '測試字體Aa123').catch(() => {});
+  });
+}
+
 const dropzone = document.getElementById('dropzone');
 const fileInput = document.getElementById('fileInput');
 const paletteSection = document.getElementById('paletteSection');
@@ -284,8 +297,9 @@ let vAnchor = 0.5;
 let cropZoom = 1;
 let hAnchor = 0.5;
 let fontScale = 1;
-let serifFont = "'Noto Serif TC'";
-let monoFont = "'Space Mono', monospace";
+let serifFont = "'Long Cang'";
+let monoFont = "'Long Cang'";
+let extendVertical = false;
 
 const fieldState = {};   // idx -> { key: value }
 const fieldTouched = new Set(); // "idx:key"
@@ -367,10 +381,21 @@ document.getElementById('fontStyleSelect').addEventListener('change', e => {
   const chosen = map[e.target.value] || map.serif;
   serifFont = chosen;
   monoFont = chosen;
-  if (currentImage) refreshAllCardImages();
+  const doRefresh = () => { if (currentImage) refreshAllCardImages(); };
+  doRefresh();
+  if (document.fonts && document.fonts.load) {
+    Promise.all([
+      document.fonts.load(`16px ${chosen}`, '測試字體Aa123'),
+      document.fonts.load(`700 16px ${chosen}`, '測試字體Aa123')
+    ]).then(doRefresh).catch(doRefresh);
+  }
 });
 document.getElementById('fontScaleSlider').addEventListener('input', e => {
   fontScale = parseFloat(e.target.value);
+  if (currentImage) refreshAllCardImages();
+});
+document.getElementById('extendVerticalCheckbox').addEventListener('change', e => {
+  extendVertical = e.target.checked;
   if (currentImage) refreshAllCardImages();
 });
 
@@ -595,11 +620,11 @@ function cardColorDate(ctx, W, H, img, p, f) {
   ctx.textAlign = 'center';
   ctx.fillStyle = textOn(bg);
   ctx.font = `700 ${W * 0.062 * fontScale}px ${serifFont}`;
-  ctx.fillText(f.title, W / 2, topH * 0.46);
+  ctx.fillText(f.title, W / 2, topH * 0.54);
 
   ctx.font = `${W * 0.034 * fontScale}px ${monoFont}`;
   ctx.fillStyle = textOn(bg) === '#241F1B' ? 'rgba(36,31,27,0.6)' : 'rgba(246,243,236,0.75)';
-  ctx.fillText(f.time, W / 2, topH * 0.46 + W * 0.065);
+  ctx.fillText(f.time, W / 2, topH * 0.54 + W * 0.065);
   ctx.textAlign = 'left';
 
   drawCover(ctx, img, 0, topH, W, H - topH);
@@ -900,15 +925,8 @@ function cardPostcard(ctx, W, H, img, p, f) {
   const half = W * 0.52;
   drawCover(ctx, img, 0, 0, half, H);
 
-  ctx.strokeStyle = rgbStr(mixWhite(c0, 0.4));
-  ctx.lineWidth = 1;
-  for (let i = 0; i < 4; i++) {
-    const ly = H * 0.28 + i * H * 0.13;
-    ctx.beginPath(); ctx.moveTo(half + W * 0.06, ly); ctx.lineTo(W - W * 0.06, ly); ctx.stroke();
-  }
-
-  const stampW = W * 0.22, stampH = stampW * 1.2;
-  const sx = W - W * 0.08 - stampW, sy = H * 0.06;
+  const stampW = W * 0.15, stampH = stampW * 1.2;
+  const sx = W - W * 0.08 - stampW, sy = H * 0.05;
   ctx.fillStyle = rgbStr(mixWhite(c0, 0.75));
   ctx.setLineDash([4, 3]);
   ctx.strokeStyle = rgbStr(c0);
@@ -916,21 +934,31 @@ function cardPostcard(ctx, W, H, img, p, f) {
   roundRect(ctx, sx, sy, stampW, stampH, 2);
   ctx.fill(); ctx.stroke();
   ctx.setLineDash([]);
+  const stampCenterX = sx + stampW / 2;
   ctx.fillStyle = rgbStr(c0);
-  ctx.font = `${W * 0.03 * fontScale}px ${monoFont}`;
+  ctx.font = `${W * 0.026 * fontScale}px ${monoFont}`;
   ctx.textAlign = 'center';
-  ctx.fillText(toHex(c0).toUpperCase(), sx + stampW / 2, sy + stampH / 2 + 4);
+  ctx.fillText(toHex(c0).toUpperCase(), stampCenterX, sy + stampH / 2 + 4);
   ctx.textAlign = 'left';
 
+  const postmarkY = sy + stampH + 20;
   ctx.strokeStyle = rgbStr(c1);
   ctx.lineWidth = 1.5;
-  ctx.beginPath(); ctx.arc(sx - stampW * 0.3, sy + stampH + 26, 20, 0, Math.PI * 2); ctx.stroke();
-  ctx.font = `${W * 0.018 * fontScale}px ${monoFont}`;
+  ctx.beginPath(); ctx.arc(stampCenterX, postmarkY, 14, 0, Math.PI * 2); ctx.stroke();
+  ctx.font = `${W * 0.016 * fontScale}px ${monoFont}`;
   ctx.fillStyle = rgbStr(c1);
   ctx.textAlign = 'center';
-  ctx.fillText('TAIPEI', sx - stampW * 0.3, sy + stampH + 22);
-  ctx.fillText(formatDateTime(shotDate), sx - stampW * 0.3, sy + stampH + 34);
+  ctx.fillText('TAIPEI', stampCenterX, postmarkY - 4);
+  ctx.fillText(formatDateTime(shotDate), stampCenterX, postmarkY + 7);
   ctx.textAlign = 'left';
+
+  ctx.strokeStyle = rgbStr(mixWhite(c0, 0.4));
+  ctx.lineWidth = 1;
+  const linesStartY = postmarkY + 30;
+  for (let i = 0; i < 4; i++) {
+    const ly = linesStartY + i * H * 0.13;
+    ctx.beginPath(); ctx.moveTo(half + W * 0.06, ly); ctx.lineTo(W - W * 0.06, ly); ctx.stroke();
+  }
 
   ctx.font = `${W * 0.045 * fontScale}px ${serifFont}`;
   ctx.fillStyle = '#241F1B';
@@ -1019,23 +1047,28 @@ function cardBoardingPass(ctx, W, H, img, p, f) {
 /* ---------------- card definitions with editable fields ---------------- */
 const CARD_DEFS = [
   { name: '色塊日期卡', w: 340, h: 460, draw: cardColorDate,
+    bgColor: p => mixWhite(p[0], 0.3),
     fields: [
       { key: 'title', label: '標題文字', usesPlace: true, default: () => resolvedPlaceName || 'Somewhere Only We Know' },
       { key: 'time', label: '日期時間', default: () => formatDateTime(shotDate) }
     ] },
   { name: '音樂播放卡', w: 320, h: 460, draw: cardMusicPlayer,
+    bgColor: p => mixBlack(p[0], 0.6),
     fields: [
       { key: 'title', label: '標題文字', default: () => 'Somewhere Only We Know' },
       { key: 'subtitle', label: '副標文字', usesPlace: true, default: () => resolvedPlaceName || 'Memory Palette' }
     ] },
   { name: '旅拍地標卡', w: 340, h: 470, draw: cardLocationStub,
+    bgColor: p => p[0],
     fields: [{ key: 'place', label: '地點名稱', usesPlace: true, default: () => resolvedPlaceName || 'Somewhere Only We Know' }] },
   { name: '拍立得', w: 320, h: 400, draw: cardPolaroid,
+    bgColor: () => ({ r: 251, g: 250, b: 246 }),
     fields: [
       { key: 'location', label: '地點', usesPlace: true, default: () => resolvedPlaceName || 'Somewhere Only We Know' },
       { key: 'caption', label: '日期／說明文字', default: () => formatDateTime(shotDate) }
     ] },
   { name: '旅行票根', w: 320, h: 480, draw: cardTicket,
+    bgColor: p => mixWhite(p[0], 0.85),
     fields: [
       { key: 'from', label: '出發地', default: () => 'TPE' },
       { key: 'to', label: '目的地', default: () => '——' },
@@ -1044,15 +1077,19 @@ const CARD_DEFS = [
       { key: 'place', label: '地點', usesPlace: true, default: () => resolvedPlaceName || 'Somewhere Only We Know' }
     ] },
   { name: '底片', w: 320, h: 480, draw: cardFilm,
+    bgColor: () => ({ r: 22, g: 20, b: 18 }),
     fields: [{ key: 'caption', label: '底片標籤文字', default: (img, p) => p.map(c => toHex(c)).join('  ') }] },
   { name: '月曆', w: 320, h: 400, draw: cardCalendar,
+    bgColor: () => ({ r: 251, g: 250, b: 246 }),
     fields: [
       { key: 'place', label: '地點', usesPlace: true, default: () => resolvedPlaceName || 'Somewhere Only We Know' },
       { key: 'note', label: '備註文字（選填）', default: () => '' }
     ] },
   { name: '明信片', w: 400, h: 260, draw: cardPostcard,
+    bgColor: () => ({ r: 246, g: 241, b: 230 }),
     fields: [{ key: 'message', label: '問候語', default: () => 'Greetings' }] },
   { name: '登機證', w: 420, h: 220, draw: cardBoardingPass,
+    bgColor: () => ({ r: 251, g: 250, b: 246 }),
     fields: [
       { key: 'gate', label: 'GATE', default: (img, p) => String(1 + (p[0].g % 30)) },
       { key: 'seat', label: 'SEAT', default: (img, p) => (10 + p[0].b % 20) + 'C' },
@@ -1079,6 +1116,24 @@ function renderCardDataUrl(idx) {
   ctx.scale(scale, scale);
   const f = resolveFieldsForRender(idx);
   def.draw(ctx, def.w, def.h, currentImage, getActivePalette(), f);
+
+  if (extendVertical) {
+    const targetH = def.w * (16 / 9);
+    if (targetH > def.h) {
+      const finalCanvas = document.createElement('canvas');
+      finalCanvas.width = def.w * scale;
+      finalCanvas.height = targetH * scale;
+      const fctx = finalCanvas.getContext('2d');
+      fctx.scale(scale, scale);
+      const palette = getActivePalette();
+      const themeColor = def.bgColor ? def.bgColor(palette) : { r: 245, g: 243, b: 236 };
+      fctx.fillStyle = rgbStr(themeColor);
+      fctx.fillRect(0, 0, def.w, targetH);
+      const offsetY = (targetH - def.h) / 2;
+      fctx.drawImage(canvas, 0, offsetY, def.w, def.h);
+      return finalCanvas.toDataURL('image/png');
+    }
+  }
   return canvas.toDataURL('image/png');
 }
 function refreshCardImage(idx) {
